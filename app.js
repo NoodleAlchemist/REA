@@ -92,15 +92,13 @@ function readSensors()
 
 }
 
-// *****IMPORTANT***
-// to use the manual overrides, frontend needs a button that sets overide state
-// to true, and the other state to false when pressed.
-// i.e. pressing heatlamp on button, sets stateInfo.manualOffTemperature to false  AND THEN stateInfo.manualOnTemperature to true 
+ 
 
 function humidifierControl(){
 
   let humidityMidPoint = ((stateInfo.humidityUpperBound - stateInfo.humidityLowerBound) / 2) + stateInfo.humidityLowerBound;
 
+  // logic for hi warning notification
   if(currentHumidity > stateInfo.humidityUpperBound){
     console.log("Err! Humidity greater than upper bound!");
     humHiWarn = true;
@@ -108,6 +106,7 @@ function humidifierControl(){
     humHiWarn = false;
   }
 
+  // user set device to off
   if(stateInfo.manualHumidity == 0){
     updateDocument = true;
     console.log(`Turning off humidifier manual override`);
@@ -116,6 +115,8 @@ function humidifierControl(){
     humidifier.writeSync(1);
     return;
   }
+  
+  //user set device to on
   if(stateInfo.manualHumidity == 1)
   {
     updateDocument = true;
@@ -126,7 +127,8 @@ function humidifierControl(){
     return;
   }
 
-
+  //device is in auto mode. Will look at sensor readings and determine if
+  //device should be powered on, or if it needs to be powered off
   if(currentHumidity <= stateInfo.humidityLowerBound)
   {
     updateDocument = true;
@@ -148,6 +150,8 @@ function humidifierControl(){
 
 function tempControl(){
 
+  //same functionality as humidityControl(), just for the heatlamp.
+  
   let temperatureMidPoint = ((stateInfo.temperatureUpperBound - stateInfo.temperatureLowerBound) / 2) + stateInfo.temperatureLowerBound;
 
   if(currentTemperature > stateInfo.temperatureUpperBound){
@@ -198,11 +202,10 @@ function tempControl(){
 }
 
 // TODO: add checks for readings that are outside of bounds for too long
+
+// call device control functions and then update the doc on Firebase
 function updateState()
 {
-  // changed to global
-  // let updateDocument = false;
-
   console.log(`Current Temperature: ${currentTemperature}`);
   console.log(`Current Humidity: ${currentHumidity}`);
   console.log(`Current heatingState: ${stateInfo.heatingState}`);
@@ -224,6 +227,8 @@ function updateDoc(){
     humidifierState: stateInfo.humidifierState,
   });
 }
+
+//pi will log in to firebase and listen for state changes from user
 function attemptLogin()
 {
   // If already logged in then just return
@@ -261,9 +266,9 @@ function attemptLogin()
         readSensors();
         updateDocs();
       }
-      //TODO update state
+      //call updateState for realtime device response if the user made a change to the DB
       updateState();
-      //console.log("Current data: ", doc.data());
+ 
     },(error) =>{
       console.log(error.code);
       console.log(error.message);
