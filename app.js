@@ -1,25 +1,30 @@
-var app$1 = require('firebase/app');
-var firestore = require('firebase/firestore');
-var auth$1 = require('firebase/auth');
-
 // To run file bundle then run using the two following commands
+// rollup app.js --file index.js --format cjs
+// node index.js
+
+// Import the functions you need from the SDKs you need
+// https://firebase.google.com/docs/web/setup#available-libraries
+import { initializeApp } from 'firebase/app';
+import { getFirestore, doc, onSnapshot, addDoc, collection, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { getAuth, signInWithEmailAndPassword } from 'firebase/auth';
 
 // The device Firebase configuration
+// removed from public repo
 const firebaseConfig = {
-  apiKey: "xxxxxxxxxxxxxxxxxxxxxxxxx",
-  authDomain: "xxxxxxxxxxxxxxxxxxxxxxxm",
-  projectId: "xxxxxxxxxxxxxxxxx",
-  storageBucket: "xxxxxxxxxxxxxxxxxxxx",
-  messagingSenderId: "xxxxxxxxxxxxxxxxx",
-  appId: "xxxxxxxxxxxxxxx",
-  measurementId: "xxxxxxxxxx"
+  apiKey: "",
+  authDomain: "",
+  projectId: "",
+  storageBucket: "",
+  messagingSenderId: "",
+  appId: "",
+  measurementId: ""
 };
 
 // Initialize Firebase
-const app = app$1.initializeApp(firebaseConfig);
-const db = firestore.getFirestore(app);
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
-const auth = auth$1.getAuth();
+const auth = getAuth();
 
 const fs = require('fs');
 const accountInfo = require('./accountInfo.json');
@@ -31,24 +36,28 @@ let stateInfo = require('./stateInfo.json');
 const gpio = require('onoff').Gpio;
 const humidifier = new gpio(20, 'high');
 const heatLamp = new gpio(21, 'high');
-const sensor = require('node-dht-sensor');
+const sensor = require('node-dht-sensor')
+
+
 
 let user;
 let currentTemperature;
 let currentHumidity;
-
 //Set device states to false on startup
 let startUpFlag = true;
 
 // global for manual functions
 let updateDocument = false;
 
+let humHiWarn = false;
+let tempHiWarn = false;
+
 //console.log(`email: ${accountInfo.email} password: ${accountInfo.password}`);
 // startUp();
 setInterval(attemptLogin, (2 * 1000));
 setInterval(readSensors, (5 * 1000));
 setInterval(updateState, (5 * 1000));
-setInterval(writeData, (5 * 60 * 1000));
+setInterval(writeData, (7 *  1000));
 
 // To run with a function parameter use a anon arrow function to call it
 //setInterval(() => attemptLogin(stuff), 2000);
@@ -78,13 +87,6 @@ function writeData()
 
 function readSensors()
 {
-  /*
-  let max = 100;
-  let min = 70;
-  currentTemperature = Math.random() * (max - min) + min;
-  currentHumidity = Math.random() * (max - min) + min;
-  */
-
   currentTemperature = parseFloat(sensor.read(11,13).temperature.toFixed(1), 10);
   currentHumidity = parseFloat(sensor.read(11,13).humidity.toFixed(1), 10);
 
@@ -100,15 +102,13 @@ function humidifierControl(){
   let humidityMidPoint = ((stateInfo.humidityUpperBound - stateInfo.humidityLowerBound) / 2) + stateInfo.humidityLowerBound;
 
   if(currentHumidity > stateInfo.humidityUpperBound){
-    updateDocument = true;
     console.log("Err! Humidity greater than upper bound!");
-    stateInfo.humHiWarn = true;
+    humHiWarn = true;
   }else{
-    updateDocument = true;
-    stateInfo.humHiWarn = false;
+    humHiWarn = false;
   }
 
-  if(stateInfo.manualOffHumidity){
+  if(stateInfo.manualHumidity == 0){
     updateDocument = true;
     console.log(`Turning off humidifier manual override`);
     stateInfo.humidifierState = false;
@@ -116,8 +116,7 @@ function humidifierControl(){
     humidifier.writeSync(1);
     return;
   }
-
-  if(stateInfo.manualOnHumidity)
+  if(stateInfo.manualHumidity == 1)
   {
     updateDocument = true;
     console.log(`Turning on humidifier manual override`);
@@ -127,7 +126,8 @@ function humidifierControl(){
     return;
   }
 
-  if(currentHumidity < stateInfo.humidityLowerBound)
+
+  if(currentHumidity <= stateInfo.humidityLowerBound)
   {
     updateDocument = true;
     console.log(`Turning on humidifier`);
@@ -135,7 +135,7 @@ function humidifierControl(){
     // Set humidifier pin to high
     humidifier.writeSync(0);
   }
-  else if(stateInfo.humidifierState && currentHumidity > humidityMidPoint)
+  else if(stateInfo.humidifierState && currentHumidity >= humidityMidPoint)
   {
     updateDocument = true;
     console.log(`Turning off humidifier`);
@@ -151,16 +151,14 @@ function tempControl(){
   let temperatureMidPoint = ((stateInfo.temperatureUpperBound - stateInfo.temperatureLowerBound) / 2) + stateInfo.temperatureLowerBound;
 
   if(currentTemperature > stateInfo.temperatureUpperBound){
-    updateDocument = true;
     console.log("Err! Temp greater than upper bound!");
-    stateInfo.tempHiWarn = true;
-  }else{
-    updateDocument = true;
-    stateInfo.tempHiWarn = false;
+    tempHiWarn = true;
+  }else{ 
+    tempHiWarn = false;
   }
 
 
-  if(stateInfo.manualOffTemperature){
+  if(stateInfo.manualTemperature == 0){
     updateDocument = true;
     console.log(`Turning off heater manual override`);
     stateInfo.heatingState = false;
@@ -168,8 +166,9 @@ function tempControl(){
     heatLamp.writeSync(1);
     return;
   }
+ 
 
-  if(stateInfo.manualOnTemperature){
+  if(stateInfo.manualTemperature == 1){
     updateDocument = true;
     console.log(`Turning on heater manual override`);
     stateInfo.heatingState = true;
@@ -178,10 +177,8 @@ function tempControl(){
     return;
   }
 
-
   // Update heater state
-  // if(currentTemperature < stateInfo.temperatureLowerBound && !stateInfo.heatingState)
-  if(currentTemperature < stateInfo.temperatureLowerBound)
+  if(currentTemperature <= stateInfo.temperatureLowerBound)
   {
     updateDocument = true;
     console.log(`Turning on heater`);
@@ -190,7 +187,7 @@ function tempControl(){
     heatLamp.writeSync(0);
 
   }
-  else if(stateInfo.heatingState && currentTemperature > temperatureMidPoint)
+  else if(stateInfo.heatingState && currentTemperature >= temperatureMidPoint)
   {
     updateDocument = true;
     console.log(`Turning off heater`);
@@ -211,24 +208,22 @@ function updateState()
   console.log(`Current heatingState: ${stateInfo.heatingState}`);
   console.log(`Current humidifierState: ${stateInfo.humidifierState}`);
 
+  
   humidifierControl();
   tempControl();
-  // updateDoc()
   if(updateDocument && user)
   {
     updateDoc();
   }
-
+  
+}
 
 function updateDoc(){
   firestore.updateDoc(firestore.doc(db, `Devices/${user.uid}`), {
     heatingState: stateInfo.heatingState,
     humidifierState: stateInfo.humidifierState,
-    tempHiWarn: stateInfo.tempHiWarn,
-    humHiWarn: stateInfo.humHiWarn
   });
 }
-
 function attemptLogin()
 {
   // If already logged in then just return
@@ -237,14 +232,17 @@ function attemptLogin()
     return;
   }
 
-  auth$1.signInWithEmailAndPassword(auth, accountInfo.email, accountInfo.password)
+  signInWithEmailAndPassword(auth, accountInfo.email, accountInfo.password)
   .then((userCredential) => {
     // Signed in 
+    
     user = userCredential.user;
+    console.log(`${user.uid}`);
 
     // Start listening to the doc
-    firestore.onSnapshot(firestore.doc(db, `Devices/${user.uid}`), (doc) => {
+    onSnapshot(doc(db, `Devices/${user.uid}`), (doc) => {
 
+      console.log(doc.data());
       // Update stateInfo
       fs.writeFileSync('./stateInfo.json', JSON.stringify(doc.data()));
 
@@ -260,10 +258,15 @@ function attemptLogin()
         startUpFlag = false;
         console.log(`start heatingState: ${stateInfo.heatingState}`);
         console.log(`start humidifierState: ${stateInfo.humidifierState}`);
-        updateDoc();
+        readSensors();
+        updateDocs();
       }
-      
+      //TODO update state
+      updateState();
       //console.log("Current data: ", doc.data());
+    },(error) =>{
+      console.log(error.code);
+      console.log(error.message);
     });
   })
   .catch((error) => {
