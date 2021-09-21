@@ -52,8 +52,7 @@ let updateDocument = false;
 let humHiWarn = false;
 let tempHiWarn = false;
 
-//console.log(`email: ${accountInfo.email} password: ${accountInfo.password}`);
-// startUp();
+
 setInterval(attemptLogin, (2 * 1000));
 setInterval(readSensors, (5 * 1000));
 setInterval(updateState, (5 * 1000));
