@@ -2,7 +2,9 @@
 •	Used Node.js to read sensor and store readings in a remote Google Firestore database. This information will be displayed to the user in a mobile app and allow the user to set desired temp/humidity, manually control the devices power state, and view a livestream of the environment.
 
 Circuit Design
+
 ![circuitDesign](circuitDesign.PNG)
 
 LED Prototype
+
 ![ledPrototype](ledPrototype.PNG)
